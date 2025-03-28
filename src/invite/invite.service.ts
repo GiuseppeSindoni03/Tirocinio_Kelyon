@@ -90,31 +90,33 @@ export class InviteService {
             throw new BadRequestException('Invite already used');
         }
 
+        if( foundInvite.expiresAt < new Date()) {
+            throw new BadRequestException('Invite expired');
+        }
+
         const salt = await bcrypt.genSalt();
         const hashedPassword = await bcrypt.hash(data.password, salt);
 
 
         //3. Salvo l'utente prima di collegarlo al paziente
-        let user: User;
+        const user = this.userRepository.create({
+            name: data.name,
+            surname: data.surname,
+            email: data.email,
+            password: hashedPassword,
+            cf: data.cf,
+            birthDate: data.birthDate,
+            gender: data.gender,
+            phone: data.phone,
+            address: data.address,
+            city: data.city,
+            cap: data.cap,
+            province: data.province,
+            role: 'PATIENT', 
+        });
+
         try {
-
-            user = await this.userRepository.save({
-                name: foundInvite.name,
-                surname: foundInvite.surname,
-                email: foundInvite.email,
-                password: hashedPassword,
-                cf: foundInvite.cf,
-                birthDate: foundInvite.birthDate,
-                gender: foundInvite.gender,
-                phone: foundInvite.phone,
-                address: foundInvite.address,
-                city: foundInvite.city,
-                cap: foundInvite.cap,
-                province: foundInvite.province,
-                role: 'PATIENT', 
-            }
-        );
-
+            await this.userRepository.save(user);
         } catch (error) {
             if (error.code === '23505') {
               if (error.detail.includes('email')) {
@@ -134,27 +136,20 @@ export class InviteService {
 
         console.log(foundInvite)
 
+        const patient = await this.patientRepository.findOne({ where: { doctor: foundInvite.doctor }});
+
+        if(!patient) {
+            throw new NotFoundException('Patient not found');
+        }
+        // 4. Associo al paziente il proprio profilo utente   
         try{
-            const patient = this.patientRepository.create({
-                weight: foundInvite.weight,
-                height: foundInvite.height,
-                bloodType: foundInvite.bloodType,
-                level: foundInvite.level,
-                sport: foundInvite.sport,
-                patologies: foundInvite.patologies,
-                medications: foundInvite.medications,
-                injuries: foundInvite.injuries,
-                user: user,
-                doctor: foundInvite.doctor
-            });
-            
-            
+            patient.user = user;
             await this.patientRepository.save(patient);
+
         } catch (err) {
             console.log(err);
-            throw new BadRequestException('Error creating patient');
+            throw new NotFoundException('Patient not found');
         }
-        // 4. Creo il paziente associato
         
 
         // 5. Marca l'invito come usato
