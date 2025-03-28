@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import {  Repository } from 'typeorm';
 import { Invite } from './invite.entity';
 import { InjectRepository } from '@nestjs/typeorm';
@@ -31,7 +31,7 @@ export class InviteService {
     }
 
     async createInvite (createInviteDto: CreateInviteDto, user: User): Promise<Invite> {
-
+        
         const doctor = await this.doctorRepository.findOne({ 
             where: { user: user },
             relations: ['user']  
@@ -39,13 +39,10 @@ export class InviteService {
           
 
         if(!doctor) {
-            throw new Error('Doctor not found');
+            throw new NotFoundException('Doctor not found');
         }
 
-        const invite =  this.inviteRepository.create(createInviteDto);
-        invite.doctor = doctor;
-        invite.expiresAt = addDays(new Date(), 7);
-
+       
         const patient = this.patientRepository.create({
             weight: createInviteDto.weight,
             height: createInviteDto.height,
@@ -58,9 +55,25 @@ export class InviteService {
             doctor: doctor
         });
         
-        await this.patientRepository.save(patient);
+        try {
+            await this.patientRepository.save(patient);
+
+        } catch(err) {
+            console.log(err);
+            throw new BadRequestException('Error creating patient');
+        }
         
-        return this.inviteRepository.save(invite);
+        const invite = this.inviteRepository.create(createInviteDto);
+        invite.doctor = doctor;
+        invite.expiresAt = addDays(new Date(), 7);
+
+        
+        try {
+            return await this.inviteRepository.save(invite);
+          } catch (error) {
+                console.error('Error during saving invite', error);
+                throw new BadRequestException('Error during saving invite');
+          }
     }
 
     async acceptInvite (data: AcceptInviteDto, inviteId: string): Promise<void> {
@@ -71,10 +84,10 @@ export class InviteService {
           });
 
         if(!foundInvite) {
-            throw new Error('Invite not found');
+            throw new NotFoundException('Invite not found');
         }
         if (foundInvite.used) {
-            throw new Error('Invite already used');
+            throw new BadRequestException('Invite already used');
         }
 
         const salt = await bcrypt.genSalt();
@@ -82,46 +95,67 @@ export class InviteService {
 
 
         //3. Salvo l'utente prima di collegarlo al paziente
-        const user = await this.userRepository.save({
-            name: foundInvite.name,
-            surname: foundInvite.surname,
-            email: foundInvite.email,
-            password: hashedPassword,
-            cf: foundInvite.cf,
-            birthDate: foundInvite.birthDate,
-            gender: foundInvite.gender,
-            phone: foundInvite.phone,
-            address: foundInvite.address,
-            city: foundInvite.city,
-            cap: foundInvite.cap,
-            province: foundInvite.province,
-            role: 'PATIENT', 
-        }
+        let user: User;
+        try {
+
+            user = await this.userRepository.save({
+                name: foundInvite.name,
+                surname: foundInvite.surname,
+                email: foundInvite.email,
+                password: hashedPassword,
+                cf: foundInvite.cf,
+                birthDate: foundInvite.birthDate,
+                gender: foundInvite.gender,
+                phone: foundInvite.phone,
+                address: foundInvite.address,
+                city: foundInvite.city,
+                cap: foundInvite.cap,
+                province: foundInvite.province,
+                role: 'PATIENT', 
+            }
         );
 
-    //const user = await  this.userRepository.findOne({ where: { email: foundInvite.email } });
-
-        if(!user) {
-            throw new Error('User not found');
+        } catch (error) {
+            if (error.code === '23505') {
+              if (error.detail.includes('email')) {
+                throw new ConflictException('Email already registered.');
+              }
+              if (error.detail.includes('cf')) {
+                throw new ConflictException('CF already registered.');
+              }
+              if (error.detail.includes('phone')) {
+                throw new ConflictException('Phone already registered.');
+              }
+            }
+            console.error(error);
+            throw new BadRequestException('Error creating user');
         }
 
+
         console.log(foundInvite)
+
+        try{
+            const patient = this.patientRepository.create({
+                weight: foundInvite.weight,
+                height: foundInvite.height,
+                bloodType: foundInvite.bloodType,
+                level: foundInvite.level,
+                sport: foundInvite.sport,
+                patologies: foundInvite.patologies,
+                medications: foundInvite.medications,
+                injuries: foundInvite.injuries,
+                user: user,
+                doctor: foundInvite.doctor
+            });
+            
+            
+            await this.patientRepository.save(patient);
+        } catch (err) {
+            console.log(err);
+            throw new BadRequestException('Error creating patient');
+        }
         // 4. Creo il paziente associato
-        const patient = this.patientRepository.create({
-            weight: foundInvite.weight,
-            height: foundInvite.height,
-            bloodType: foundInvite.bloodType,
-            level: foundInvite.level,
-            sport: foundInvite.sport,
-            patologies: foundInvite.patologies,
-            medications: foundInvite.medications,
-            injuries: foundInvite.injuries,
-            user: user,
-            doctor: foundInvite.doctor
-        });
         
-        
-        await this.patientRepository.save(patient);
 
         // 5. Marca l'invito come usato
         await this.inviteRepository.update({id: foundInvite.id}, { used: true });
