@@ -78,6 +78,10 @@ export class InviteService {
             birthDate: foundInvite.birthDate,
             gender: foundInvite.gender,
             phone: foundInvite.phone,
+            address: foundInvite.address,
+            city: foundInvite.city,
+            cap: foundInvite.cap,
+            province: foundInvite.province,
             role: 'PATIENT', 
         }
         );
@@ -91,10 +95,14 @@ export class InviteService {
         console.log(foundInvite)
         // 4. Creo il paziente associato
         const patient = this.patientRepository.create({
-            address: foundInvite.address,
-            city: foundInvite.city,
-            cap: foundInvite.cap,
-            province: foundInvite.province,
+            weight: foundInvite.weight,
+            height: foundInvite.height,
+            bloodType: foundInvite.bloodType,
+            level: foundInvite.level,
+            sport: foundInvite.sport,
+            patologies: foundInvite.patologies,
+            medications: foundInvite.medications,
+            injuries: foundInvite.injuries,
             user: user,
             doctor: foundInvite.doctor
         });

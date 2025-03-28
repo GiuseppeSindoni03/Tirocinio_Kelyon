@@ -42,6 +42,10 @@ export class AuthService {
             birthDate,
             phone,
             gender,
+            address,
+            city,
+            cap,
+            province,
             medicalOffice,
             specialization,
             registrationNumber,
@@ -70,6 +74,10 @@ export class AuthService {
             birthDate,
             phone,
             gender,
+            address,
+            city,
+            cap,
+            province,
             role: Role.DOCTOR
         });
 

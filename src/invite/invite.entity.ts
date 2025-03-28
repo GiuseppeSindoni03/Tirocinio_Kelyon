@@ -40,6 +40,32 @@ export class Invite {
     @Column()
     province: string;
 
+
+    @Column({ type: 'float'})
+    weight: number;
+
+    @Column({ type: 'float'})
+    height: number;
+
+    @Column()
+    bloodType: string;
+
+    @Column()
+    level: string;
+
+    @Column()
+    sport: string;
+
+    @Column("text", {array: true})
+    patologies: string[];
+
+    @Column("text", {array: true})
+    medications: string[];
+
+    @Column("text", {array: true})
+    injuries: string[];
+
+
     @Column({ default: false })
     used: boolean;
 

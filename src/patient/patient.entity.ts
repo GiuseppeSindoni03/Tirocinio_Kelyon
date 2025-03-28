@@ -8,7 +8,6 @@ import {
   PrimaryGeneratedColumn,
 } from 'typeorm';
 import { User } from 'src/user/user.entity';
-import { MedicalInfo } from './medical-info.entity';
 import { MedicalExamination } from 'src/medical-examination/medical-examination.entity';
 import { Doctor } from 'src/doctor/doctor.entity';
 
@@ -17,24 +16,31 @@ export class Patient {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
-  @Column()
-  address: string;
+
+  @Column({ type: 'float'})
+  weight: number;
+
+  @Column({ type: 'float'})
+  height: number;
 
   @Column()
-  city: string;
+  bloodType: string;
 
   @Column()
-  cap: string;
+  level: string;
 
   @Column()
-  province: string;
+  sport: string;
 
-  @OneToOne(() => MedicalInfo, (medicalInfo) => medicalInfo.patient, {
-    nullable: true,
-    onDelete: 'CASCADE',
-  })
-  @JoinColumn()
-  medicalInfo?: MedicalInfo;
+  @Column("text", {array: true})
+  patologies: string[];
+
+  @Column("text", {array: true})
+  medications: string[];
+
+  @Column("text", {array: true})
+  injuries: string[];
+
 
   @OneToMany(
     () => MedicalExamination,

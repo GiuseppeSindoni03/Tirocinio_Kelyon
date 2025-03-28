@@ -6,6 +6,7 @@ import { AuthGuard } from '@nestjs/passport';
 import { RolesGuard } from 'src/auth/guards/roles.guard';
 import { Roles } from 'src/auth/decorators/role.decorator';
 import { AcceptInviteDto } from './dto/accept-invite.dto';
+import { RequestWithUser } from 'src/types/request-with-user.interface';
 
 
 @Controller('invite')
@@ -20,7 +21,7 @@ export class InviteController {
     @Post('/create')
     @Roles('DOCTOR')
     async createInvite(
-        @Req() req,
+        @Req() req: RequestWithUser,
         @Body() inviteDto: CreateInviteDto,
     ): Promise<Invite> {
         const user = req.user;

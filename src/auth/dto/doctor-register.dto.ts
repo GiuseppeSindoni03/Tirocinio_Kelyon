@@ -38,6 +38,23 @@ export class DoctorRegisterDto {
     @IsEnum(['Uomo', 'Donna', 'Altro'], {message: 'Il genere deve essere Uomo, Donna o Altro'})
     gender: Gender;
 
+
+    @IsNotEmpty()
+    @IsString()
+    address: string;
+
+    @IsNotEmpty()
+    @IsString()
+    city: string;
+
+    @IsNotEmpty()
+    @IsString()
+    cap: string;
+
+    @IsNotEmpty()
+    @IsString()
+    province: string;
+
     @IsNotEmpty()
     @IsString()
     @MaxLength(100)

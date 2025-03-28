@@ -35,4 +35,16 @@ export class User {
 
     @Column()
     role: string;
+
+    @Column()
+    address: string;
+
+    @Column()
+    city: string;
+
+    @Column()
+    cap: string;
+
+    @Column()
+    province: string;
 }

@@ -1,18 +1,15 @@
-import { Body, Controller, Post, Req } from '@nestjs/common';
-import { PatientInfoDto } from './dto/patient-info.dto';
+import { Body, Controller, Post, Req, UseGuards } from '@nestjs/common';
 import { PatientService } from './patient.service';
+import { AuthGuard } from '@nestjs/passport';
+import { RequestWithUser } from 'src/types/request-with-user.interface';
 
 @Controller('patient')
+@UseGuards(AuthGuard('jwt'))
 export class PatientController {
 
     constructor (
         private patientService: PatientService,
     ) {}
 
-    // @Post('user-info')
-    // async postPatientInfo(@Body() patientInfo: PatientInfoDto, @Req() req: Request): Promise<PatientInfoDto> {
-        
-        
-    //     //return this.patientService.postPatientInfo(patientInfo);
-    // }
+    
 }
