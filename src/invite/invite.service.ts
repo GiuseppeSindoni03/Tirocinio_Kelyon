@@ -8,6 +8,7 @@ import { User } from 'src/user/user.entity';
 import { AcceptInviteDto } from './dto/accept-invite.dto';
 import { Patient } from 'src/patient/patient.entity';
 import * as bcrypt from 'bcryptjs';
+import { addDays } from 'date-fns';
 
 
 @Injectable()
@@ -41,31 +42,43 @@ export class InviteService {
             throw new Error('Doctor not found');
         }
 
-        const invite = this.inviteRepository.create(createInviteDto);
+        const invite =  this.inviteRepository.create(createInviteDto);
         invite.doctor = doctor;
-        invite.expiresAt = new Date(Date.now() + 1000 * 60 * 60 * 24 * 7); // 7 giorni
+        invite.expiresAt = addDays(new Date(), 7);
 
-
-        console.log('Doctor:' + doctor)
-        console.log(invite.doctor)
-
+        const patient = this.patientRepository.create({
+            weight: createInviteDto.weight,
+            height: createInviteDto.height,
+            bloodType: createInviteDto.bloodType,
+            level: createInviteDto.level,
+            sport: createInviteDto.sport,
+            patologies: createInviteDto.patologies,
+            medications: createInviteDto.medications,
+            injuries: createInviteDto.injuries,
+            doctor: doctor
+        });
+        
+        await this.patientRepository.save(patient);
         
         return this.inviteRepository.save(invite);
     }
 
-    async acceptInvite (acceptInviteDto: AcceptInviteDto, invite: string): Promise<void> {
-        const {password} = acceptInviteDto;
-        
+    async acceptInvite (data: AcceptInviteDto, inviteId: string): Promise<void> {
+    
         const foundInvite = await this.inviteRepository.findOne({ 
-            where: { id: invite },
+            where: { id: inviteId },
             relations: ['doctor'] 
           });
+
         if(!foundInvite) {
             throw new Error('Invite not found');
         }
+        if (foundInvite.used) {
+            throw new Error('Invite already used');
+        }
 
         const salt = await bcrypt.genSalt();
-        const hashedPassword = await bcrypt.hash(password, salt);
+        const hashedPassword = await bcrypt.hash(data.password, salt);
 
 
         //3. Salvo l'utente prima di collegarlo al paziente
@@ -107,11 +120,8 @@ export class InviteService {
             doctor: foundInvite.doctor
         });
         
-
+        
         await this.patientRepository.save(patient);
-
-
-        console.log('foundInvite ID:', foundInvite.id);
 
         // 5. Marca l'invito come usato
         await this.inviteRepository.update({id: foundInvite.id}, { used: true });

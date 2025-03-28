@@ -5,7 +5,7 @@ import { Invite } from './invite.entity';
 import { AuthGuard } from '@nestjs/passport';
 import { RolesGuard } from 'src/auth/guards/roles.guard';
 import { Roles } from 'src/auth/decorators/role.decorator';
-import { AcceptInviteDto } from './dto/accept-invite.dto';
+import { AcceptInviteDto } from '../invite/dto/accept-invite.dto';
 import { RequestWithUser } from 'src/types/request-with-user.interface';
 
 
@@ -29,7 +29,7 @@ export class InviteController {
     }
 
 
-    @Post('/accept/:id')
+    @Post('/:id/accept')
     async acceptInvite(
         @Req() req,
         @Body() acceptInviteDto: AcceptInviteDto) {

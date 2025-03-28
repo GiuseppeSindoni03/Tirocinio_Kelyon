@@ -52,7 +52,7 @@ export class Patient {
   @ManyToOne(() => Doctor, (doctor) => doctor.id, { onDelete: 'CASCADE' })
   doctor: Doctor;
 
-  @OneToOne(() => User, (user) => user.id, { onDelete: 'CASCADE' })
+  @OneToOne(() => User, (user) => user.id, { nullable: true, onDelete: 'CASCADE' })
   @JoinColumn()
   user: User;
 }
