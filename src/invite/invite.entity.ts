@@ -49,7 +49,7 @@ export class Invite {
     @Column({ type: 'timestamp', nullable: true })
     expiresAt: Date;
 
-    @ManyToOne(type => Doctor, (doctor) => doctor.id, {cascade: true})
+    @ManyToOne(type => Doctor, (doctor) => doctor.id, {cascade: true, onDelete: 'CASCADE'})
     @JoinColumn()
     doctor: Doctor;
 

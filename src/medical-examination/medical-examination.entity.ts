@@ -16,9 +16,9 @@ export class MedicalExamination {
     @Column()
     note: string;
 
-    @ManyToOne(() => Patient, (patient) => patient.medicalExaminations)
+    @ManyToOne(() => Patient, (patient) => patient.medicalExaminations, { onDelete: 'CASCADE' })
     patient: Patient;
 
-    @ManyToOne(() => Doctor, (doctor) => doctor.medicalExaminations)
+    @ManyToOne(() => Doctor, (doctor) => doctor.medicalExaminations, { onDelete: 'CASCADE' })
     doctor: Doctor;   
 }

@@ -9,7 +9,6 @@ export class Session {
   @ManyToOne(() => User, { onDelete: 'CASCADE' })
   user: User;
 
-
   @Column({nullable: true, type: 'text'})
   refreshToken: string;
 

@@ -31,7 +31,7 @@ export class Doctor {
     medicalExaminations: MedicalExamination[];
 
 
-    @OneToOne(() => User, (user) => user.id)
+    @OneToOne(() => User, (user) => user.id, { onDelete: 'CASCADE' })
     @JoinColumn()
     user: User; 
 }

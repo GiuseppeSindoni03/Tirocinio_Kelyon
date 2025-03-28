@@ -33,7 +33,7 @@ export class InviteService {
 
         const doctor = await this.doctorRepository.findOne({ 
             where: { user: user },
-            relations: ['user']  // 👈 così carichi anche user
+            relations: ['user']  
           });
           
 
