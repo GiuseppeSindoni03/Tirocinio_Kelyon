@@ -1,50 +1,48 @@
-import { Exclude } from "class-transformer";
-import { Column, Entity, PrimaryGeneratedColumn, Unique } from "typeorm";
-
+import { Exclude } from 'class-transformer';
+import { Column, Entity, PrimaryGeneratedColumn, Unique } from 'typeorm';
 
 @Entity()
-@Unique(["email", "cf", "phone"]) 
+@Unique(['email', 'cf', 'phone'])
 export class User {
+  @PrimaryGeneratedColumn('uuid')
+  id: string;
 
-    @PrimaryGeneratedColumn('uuid')
-    id: string;
+  @Column()
+  name: string;
 
-    @Column()
-    name: string;
+  @Column()
+  surname: string;
 
-    @Column()
-    surname: string;
+  @Column()
+  email: string;
 
-    @Column()
-    email: string;
+  @Column()
+  password: string;
 
-    @Column()
-    password: string;
+  @Column()
+  cf: string;
 
-    @Column()
-    cf: string;
+  @Column({ type: 'date' })
+  birthDate: Date;
 
-    @Column( { type: 'date' } )
-    birthDate: Date;
+  @Column()
+  gender: string;
 
-    @Column()
-    gender: string;
+  @Column()
+  phone: string;
 
-    @Column()
-    phone: string;
+  @Column()
+  role: string;
 
-    @Column()
-    role: string;
+  @Column()
+  address: string;
 
-    @Column()
-    address: string;
+  @Column()
+  city: string;
 
-    @Column()
-    city: string;
+  @Column()
+  cap: string;
 
-    @Column()
-    cap: string;
-
-    @Column()
-    province: string;
+  @Column()
+  province: string;
 }

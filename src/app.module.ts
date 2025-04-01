@@ -9,6 +9,8 @@ import { MedicalExaminationModule } from './medical-examination/medical-examinat
 import { UserModule } from './user/user.module';
 import { SessionModule } from './session/session.module';
 import { InviteModule } from './invite/invite.module';
+import { AvailabilityModule } from './availability/availability.module';
+import { ReservationModule } from './reservation/reservation.module';
 
 @Module({
   imports: [
@@ -19,17 +21,17 @@ import { InviteModule } from './invite/invite.module';
     TypeOrmModule.forRootAsync({
       imports: [ConfigModule],
       inject: [ConfigService],
-      useFactory: async (configService: ConfigService)  => ({
-          type: 'postgres',
-          autoLoadEntities: true,
-          synchronize: true,
-          host: configService.get('DB_HOST'),
-          port: configService.get('DB_PORT'),
-          username: configService.get('DB_USERNAME'),
-          password: configService.get('DB_PASSWORD'),
-          database: configService.get('DB_DATABASE'),
-          logging: 'all'
-        }),
+      useFactory: async (configService: ConfigService) => ({
+        type: 'postgres',
+        autoLoadEntities: true,
+        synchronize: true,
+        host: configService.get('DB_HOST'),
+        port: configService.get('DB_PORT'),
+        username: configService.get('DB_USERNAME'),
+        password: configService.get('DB_PASSWORD'),
+        database: configService.get('DB_DATABASE'),
+        //logging: 'all',
+      }),
     }),
     AuthModule,
     PatientModule,
@@ -38,6 +40,8 @@ import { InviteModule } from './invite/invite.module';
     UserModule,
     SessionModule,
     InviteModule,
+    AvailabilityModule,
+    ReservationModule,
   ],
   controllers: [],
 })

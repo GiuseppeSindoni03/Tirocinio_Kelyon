@@ -16,11 +16,10 @@ export class Patient {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
-
-  @Column({ type: 'float'})
+  @Column({ type: 'float' })
   weight: number;
 
-  @Column({ type: 'float'})
+  @Column({ type: 'float' })
   height: number;
 
   @Column()
@@ -32,15 +31,14 @@ export class Patient {
   @Column()
   sport: string;
 
-  @Column("text", {array: true})
+  @Column('text', { array: true })
   patologies: string[];
 
-  @Column("text", {array: true})
+  @Column('text', { array: true })
   medications: string[];
 
-  @Column("text", {array: true})
+  @Column('text', { array: true })
   injuries: string[];
-
 
   @OneToMany(
     () => MedicalExamination,
@@ -52,7 +50,10 @@ export class Patient {
   @ManyToOne(() => Doctor, (doctor) => doctor.id, { onDelete: 'CASCADE' })
   doctor: Doctor;
 
-  @OneToOne(() => User, (user) => user.id, { nullable: true, onDelete: 'CASCADE' })
+  @OneToOne(() => User, (user) => user.id, {
+    nullable: true,
+    onDelete: 'CASCADE',
+  })
   @JoinColumn()
   user: User;
 }
