@@ -9,6 +9,7 @@ import {
   PrimaryGeneratedColumn,
 } from 'typeorm';
 import { Availability } from 'src/availability/availability.entity';
+import { Reservation } from 'src/reservation/reservation.entity';
 
 @Entity()
 export class Doctor {
@@ -45,4 +46,7 @@ export class Doctor {
 
   @OneToMany(() => Availability, (availability) => availability.doctor)
   availabilities: Availability[];
+
+  @OneToMany(() => Reservation, (reservation) => reservation.doctor)
+  reservations: Reservation[];
 }

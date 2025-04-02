@@ -1,8 +1,8 @@
 import { Repository } from 'typeorm';
-import { Reservetion } from './reservation.entity';
+import { Reservation } from './reservation.entity';
 
-export class ReservationRepository extends Repository<Reservetion> {
-  constructor(private readonly repository: Repository<Reservetion>) {
+export class ReservationRepository extends Repository<Reservation> {
+  constructor(private readonly repository: Repository<Reservation>) {
     super(repository.target, repository.manager, repository.queryRunner);
   }
 }

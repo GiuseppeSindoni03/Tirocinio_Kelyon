@@ -1,8 +1,8 @@
-import { IsISO8601, IsNotEmpty } from 'class-validator';
-import { HasMinimumDuration } from 'src/validators/has-minimum-duration';
+import { IsDate, IsISO8601, IsNotEmpty } from 'class-validator';
+import { HasDuration } from 'src/validators/has-duration.validator';
 import { IsSameDay } from 'src/validators/IsSameDayAndValidRange';
 
-export class CreateAvailabilityDto {
+export class CreateReservationDto {
   @IsNotEmpty()
   @IsISO8601()
   startTime: Date;
@@ -12,6 +12,6 @@ export class CreateAvailabilityDto {
   endTime: Date;
 
   @IsSameDay()
-  @HasMinimumDuration(30)
+  @HasDuration(30)
   checkTimeRange: boolean;
 }

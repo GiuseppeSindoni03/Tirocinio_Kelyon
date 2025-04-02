@@ -3,8 +3,6 @@ import {
   Column,
   Entity,
   ManyToOne,
-  OneToMany,
-  PrimaryColumn,
   PrimaryGeneratedColumn,
   Unique,
 } from 'typeorm';
@@ -14,11 +12,11 @@ export class Availability {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
-  @Column({ type: 'timestamp' })
+  @Column({ type: 'timestamptz' })
   @Unique(['doctor', 'startTime'])
   startTime: Date;
 
-  @Column({ type: 'timestamp' })
+  @Column({ type: 'timestamptz' })
   @Unique(['doctor', 'endTime'])
   endTime: Date;
 

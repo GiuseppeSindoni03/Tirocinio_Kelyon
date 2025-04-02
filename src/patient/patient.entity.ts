@@ -10,6 +10,7 @@ import {
 import { User } from 'src/user/user.entity';
 import { MedicalExamination } from 'src/medical-examination/medical-examination.entity';
 import { Doctor } from 'src/doctor/doctor.entity';
+import { Reservation } from 'src/reservation/reservation.entity';
 
 @Entity()
 export class Patient {
@@ -39,6 +40,9 @@ export class Patient {
 
   @Column('text', { array: true })
   injuries: string[];
+
+  @OneToMany(() => Reservation, (reservation) => reservation.doctor)
+  reservations: Reservation[];
 
   @OneToMany(
     () => MedicalExamination,

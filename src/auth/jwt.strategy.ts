@@ -8,6 +8,7 @@ import { Session } from 'src/session/session.entity';
 import { Repository } from 'typeorm';
 import { UserItem } from 'src/types/userItem';
 import { Doctor } from 'src/doctor/doctor.entity';
+import { Patient } from 'src/patient/patient.entity';
 
 @Injectable()
 export class JwtStrategy extends PassportStrategy(Strategy) {
@@ -17,6 +18,9 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
 
     @InjectRepository(Doctor)
     private readonly doctorRepository: Repository<Doctor>,
+
+    @InjectRepository(Patient)
+    private readonly patientRepository: Repository<Patient>,
 
     private readonly configService: ConfigService,
   ) {
@@ -43,11 +47,7 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
       throw new UnauthorizedException('Session expired');
     }
 
-    console.log(session);
-
     const user: UserItem = session.user;
-    console.log('UTENTE DELLA SESSIONE: ');
-    console.log(user);
 
     if (user.role === 'DOCTOR') {
       const doctor = await this.doctorRepository.findOne({
@@ -55,15 +55,20 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
         relations: ['user'],
       });
 
-      console.log('Dottore: ');
-      console.log(doctor);
-
       if (doctor) {
         user.doctor = doctor;
       }
+    } else if ((user.role = 'PATIENT')) {
+      const patient = await this.patientRepository.findOne({
+        where: { user: user },
+        relations: ['doctor', 'user'],
+      });
+
+      if (patient) {
+        user.patient = patient;
+      }
     }
 
-    console.log('UTENTE DOPO AVER AGGIUNTO DOCTOR: ');
     console.log(user);
 
     return user;

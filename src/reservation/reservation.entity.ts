@@ -1,24 +1,28 @@
-import { Column, Entity, OneToMany, PrimaryGeneratedColumn } from 'typeorm';
+import { Column, Entity, ManyToOne, PrimaryGeneratedColumn } from 'typeorm';
 import { ReservationStatus } from './types/reservation-status-enum';
 import { Patient } from 'src/patient/patient.entity';
+import { Doctor } from 'src/doctor/doctor.entity';
 
 @Entity()
-export class Reservetion {
+export class Reservation {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
   @Column({ type: 'enum', enum: ReservationStatus })
   status: ReservationStatus;
 
-  @Column({ type: 'timestamp' })
+  @Column({ type: 'timestamptz' })
   createdAt: Date;
 
-  @Column({ type: 'date' })
+  @Column({ type: 'timestamptz' })
   startDate: Date;
 
-  @Column({ type: 'date' })
+  @Column({ type: 'timestamptz' })
   endDate: Date;
 
-  @OneToMany(() => Patient, (patient) => patient.id)
+  @ManyToOne(() => Patient, (patient) => patient.reservations)
   patient: Patient;
+
+  @ManyToOne(() => Doctor, (doctor) => doctor.reservations)
+  doctor: Doctor;
 }
