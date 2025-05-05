@@ -1,6 +1,6 @@
-import { IsDate, IsISO8601, IsNotEmpty } from 'class-validator';
-import { HasDuration } from 'src/validators/has-duration.validator';
-import { IsSameDay } from 'src/validators/IsSameDayAndValidRange';
+import { IsEnum, IsISO8601, IsNotEmpty } from 'class-validator';
+import { IsSameDay } from 'src/common/validators/IsSameDayAndValidRange';
+import { VisitTypeEnum } from '../types/visit-type.enum';
 
 export class CreateReservationDto {
   @IsNotEmpty()
@@ -11,7 +11,10 @@ export class CreateReservationDto {
   @IsISO8601()
   endTime: Date;
 
-  @IsSameDay()
-  @HasDuration(30)
-  checkTimeRange: boolean;
+  @IsNotEmpty()
+  @IsEnum(VisitTypeEnum)
+  visitType: VisitTypeEnum;
+
+  // @IsSameDay()
+  // boolean: boolean;
 }

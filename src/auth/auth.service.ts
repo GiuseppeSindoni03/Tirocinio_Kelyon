@@ -1,6 +1,9 @@
-import { ConflictException, Injectable, UnauthorizedException } from '@nestjs/common';
+import {
+  ConflictException,
+  Injectable,
+  UnauthorizedException,
+} from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Patient } from '../patient/patient.entity';
 import { Repository } from 'typeorm';
 import { AuthCredentialsDto } from './dto/auth-credentials.dto';
 import * as bcrypt from 'bcrypt';
@@ -14,269 +17,269 @@ import { Session } from 'src/session/session.entity';
 import { DeviceInfo } from './utils/deviceInfo';
 import { Doctor } from 'src/doctor/doctor.entity';
 import { LogoutDto } from './dto/logout.dto';
-import { Role } from './utils/role-enum';
+import { UserRoles } from 'src/common/enum/roles.enum';
 
+interface AuthResponse {
+  accessToken: string;
+  refreshToken: string;
+  user: {
+    name: string;
+    surname: string;
+    email: string;
+    role: string;
+    id: string;
+  };
+}
 
 @Injectable()
 export class AuthService {
-    constructor(
-        @InjectRepository(User)
-        private readonly userRepository: Repository<User>,
+  constructor(
+    @InjectRepository(User)
+    private readonly userRepository: Repository<User>,
 
-        @InjectRepository(Session)
-        private readonly sessionRepository: Repository<Session>,
+    @InjectRepository(Session)
+    private readonly sessionRepository: Repository<Session>,
 
-        @InjectRepository(Doctor)
-        private readonly doctorRepository: Repository<Doctor>,
+    @InjectRepository(Doctor)
+    private readonly doctorRepository: Repository<Doctor>,
 
-        private jwtService: JwtService
-    ) {}
+    private jwtService: JwtService,
+  ) {}
 
-    async signUp (info: DoctorRegisterDto, deviceInfo: DeviceInfo): Promise<TokensDto> {
-        const { 
-            email,
-            password,
-            name,
-            surname,
-            cf,
-            birthDate,
-            phone,
-            gender,
-            address,
-            city,
-            cap,
-            province,
-            medicalOffice,
-            specialization,
-            registrationNumber,
-            orderProvince,
-            orderDate,
-            orderType,
-        } = info;
+  async signUp(
+    info: DoctorRegisterDto,
+    deviceInfo: DeviceInfo,
+  ): Promise<AuthResponse> {
+    const existingUser = await this.findUser(info.email, info.phone, info.cf);
+    if (existingUser) throw new ConflictException('User already exists');
 
-        // 1. verifico se l'utente esiste
-        const found = await this.userRepository.findOne({ where: { email, cf } });
-        if (found) 
-            throw new ConflictException('User already exists');
+    const hashedPassword = await this.hashPassword(info.password);
 
+    const doctor = await this.createUserDoctor(info, hashedPassword);
+    await this.createDoctorInfo(info, doctor);
 
-        // 2. Genero il salt e hasho la password
-        const salt = await bcrypt.genSalt();
-        const hashedPassword = await bcrypt.hash(password, salt);
+    const session = await this.createSession(doctor, deviceInfo);
 
-        // 3. creo il nuovo dottore
-        const doctor = this.userRepository.create({
-            email,
-            password: hashedPassword,
-            name,
-            surname,
-            cf,
-            birthDate,
-            phone,
-            gender,
-            address,
-            city,
-            cap,
-            province,
-            role: Role.DOCTOR
-        });
+    const tokens: TokensDto = await this.generateTokens({
+      userId: doctor.id,
+      sessionId: session.id,
+    });
 
-        await this.userRepository.save(doctor);
+    session.refreshToken = await this.hashToken(tokens.refreshToken);
+    await this.sessionRepository.save(session);
 
-        const doctorInfo = this.doctorRepository.create({
-            medicalOffice,
-            registrationNumber,
-            orderProvince,
-            orderDate,
-            orderType,
-            specialization,
-            user: doctor
-        })
-        
+    return {
+      accessToken: tokens.accessToken,
+      refreshToken: tokens.refreshToken,
+      user: {
+        name: info.name,
+        surname: info.surname,
+        email: info.email,
+        role: UserRoles.DOCTOR,
+        id: doctor.id,
+      },
+    };
+  }
 
+  async signIn(
+    credentials: AuthCredentialsDto,
+    deviceInfo: DeviceInfo,
+  ): Promise<AuthResponse> {
+    const { email, password } = credentials;
 
-        await this.doctorRepository.save(doctorInfo);
-    
+    const user = await this.userRepository.findOne({ where: { email } });
 
-        // 4. creo la nuova sessione
-        const session = this.sessionRepository.create({
-            user: doctor,
-            createdAt: new Date(),
-            expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
-            deviceInfo: deviceInfo.userAgent,
-            ipAddress: deviceInfo.ipAddress
-        });
-
-        const payload: JwtPayload = { 
-            userId: doctor.id,
-            sessionId: session.id
-         };
-
-        // 5. genero i token
-        const accessToken: string = await this.jwtService.sign(payload, {expiresIn: '15m'});
-        const refreshToken: string = await this.jwtService.sign(payload, {expiresIn: '7d'});
-
-        const hashedRefreshToken = await bcrypt.hash(refreshToken, salt);
-        
-        // 6. salvo il refreshToken hashato nella sessione
-        session.refreshToken = hashedRefreshToken;
-
-        try {
-            await this.sessionRepository.save(session);
-        } catch (err) {
-            console.log(err);
-            throw err;
-        }
-        return {
-            accessToken: accessToken,
-            refreshToken: refreshToken
-        }
+    if (!user || !(await bcrypt.compare(password, user.password))) {
+      throw new UnauthorizedException('Invalid credentials');
     }
 
-    async signIn(credentials: AuthCredentialsDto, deviceInfo: DeviceInfo): Promise<TokensDto> {
-        const { email, password } = credentials;
+    const session = await this.createSession(user, deviceInfo);
 
-        const user = await this.userRepository.findOne({ where: { email } });
+    const tokens: TokensDto = await this.generateTokens({
+      userId: user.id,
+      sessionId: session.id,
+    });
 
-        // 1. controllo che l'utenta esista e che le credenziali siano corrette
-        if (!user || !(await bcrypt.compare(password, user.password))) {
-            throw new UnauthorizedException('Invalid credentials');
-        }
-        
-        // 2. creo la nuova sessione
-        const session = this.sessionRepository.create({
-            user: user,
-            createdAt: new Date(),
-            expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
-            deviceInfo: deviceInfo.userAgent,
-            ipAddress: deviceInfo.ipAddress
-        })
+    const hashedRefreshToken = await this.hashToken(tokens.refreshToken);
 
-        await this.sessionRepository.save(session);
+    session.refreshToken = hashedRefreshToken;
+    await this.sessionRepository.save(session);
 
-        const payload: JwtPayload = { 
-            userId: user.id,
-            sessionId: session.id
-            };
-        
-        // 3. genero i nuovi token
-        const accessToken = await this.jwtService.sign(payload, {expiresIn: '15m'});
-        const refreshToken = await this.jwtService.sign(payload, {expiresIn: '7d'});
+    return {
+      accessToken: tokens.accessToken,
+      refreshToken: tokens.refreshToken,
+      user: {
+        name: user.name,
+        surname: user.surname,
+        email: user.email,
+        role: user.role,
+        id: user.id,
+      },
+    };
+  }
 
-        console.log(payload)
-        const salt = await bcrypt.genSalt();
-        const hashedRefreshToken = await bcrypt.hash(refreshToken, salt);
-        
-        // 4. salvo il refreshToken hashato nella sessione
-        session.refreshToken = hashedRefreshToken;
+  async refreshToken(refreshDto: RefreshDto): Promise<TokensDto> {
+    const { refreshToken } = refreshDto;
 
-        try {
-            await this.sessionRepository.save(session);
-        }
-        catch (err) {
-            console.log(err);
-            throw err;
-        }
+    const payload = this.verifyToken(refreshToken);
 
-        return {
-            accessToken: accessToken, 
-            refreshToken: refreshToken 
-        };
+    const session = await this.sessionRepository.findOne({
+      where: { id: payload.sessionId },
+      relations: ['user'],
+    });
+
+    if (
+      !session ||
+      !(await this.isRefreshTokenValid(refreshToken, session.refreshToken))
+    ) {
+      throw new UnauthorizedException();
     }
 
-    async refreshToken (refreshDto: RefreshDto): Promise<TokensDto> {
-        const { refreshToken } = refreshDto;
+    const tokens: TokensDto = await this.generateTokens({
+      userId: session.user.id,
+      sessionId: session.id,
+    });
 
-        //1 . controllo che il refreshToken sia ancora valido
-        let payload: JwtPayload;
-        try {
-            payload = this.jwtService.verify(refreshToken);
-        }
-        catch (err) {
-            throw new UnauthorizedException();
-        }
+    const hashedRefreshToken = await this.hashToken(tokens.refreshToken);
 
-        // 3. recupero la sessione
-        const session =  await this.sessionRepository.findOne({
-            where: {id: payload.sessionId},
-            relations: ['user']
-        });
+    session.refreshToken = hashedRefreshToken;
+    await this.sessionRepository.save(session);
 
-        if (!session) {
-            throw new UnauthorizedException();
-        }
-        
-        // 4. controllo che il refreshToken coincidi a quello salvato nel db
-        const isMatch = await bcrypt.compare(refreshToken, session.refreshToken);
-        if(!isMatch ){ 
-            throw new UnauthorizedException();
-        }
+    return tokens;
+  }
 
-        const newPayload: JwtPayload = {
-            userId: session.user.id,
-            sessionId: session.id
-          };
+  async logout(logoutDto: LogoutDto): Promise<void> {
+    const { refreshToken } = logoutDto;
 
-        // 5. genero i nuovi token
-        const newAccessToken = this.jwtService.sign(newPayload, {expiresIn: '15m'});
-        const newRefreshToken = this.jwtService.sign(newPayload, {expiresIn: '7d'});
+    const payload = this.verifyToken(refreshToken);
 
+    const session = await this.sessionRepository.findOne({
+      where: { id: payload.sessionId },
+    });
 
-        const salt = await bcrypt.genSalt();
-        const hashedRefreshToken = await bcrypt.hash(newRefreshToken, salt);
-
-        // 6. aggiorno il token della sessione
-        session.refreshToken = hashedRefreshToken;
-        
-        try {
-            await this.sessionRepository.save(session);
-        } catch (err) {
-            console.log(err);
-            throw err;
-        }
-
-        return {
-            accessToken: newAccessToken, 
-            refreshToken: newRefreshToken
-        };
+    if (
+      !session ||
+      !(await this.isRefreshTokenValid(refreshToken, session.refreshToken))
+    ) {
+      throw new UnauthorizedException();
     }
 
-    async logout (logoutDto: LogoutDto): Promise<void> {
-        const {  refreshToken } = logoutDto;
-
-        // 1. controllo che il refreshToken sia ancora valido
-        let payload: JwtPayload;
-        try {
-            payload = await this.jwtService.verify(refreshToken);
-        } catch (err) {
-            throw new UnauthorizedException('Invalid or expired refresh token');
-        } 
-
-        // 2. recupero la sessione
-        const session = await this.sessionRepository.findOne({
-            where: {id: payload.sessionId}
-        })
-
-        
-        if(!session )
-            throw new UnauthorizedException('Session not found');
-
-        // 3. controllo che il refreshToken coincida a quello salvato nel db
-        const isMatch = await bcrypt.compare(refreshToken, session.refreshToken);
-        if (!isMatch){
-            throw new UnauthorizedException('Refresh token mismatch');
-        }
-
-        // 4. elimino la sessione
-        try {
-            await this.sessionRepository.delete(session.id)
-        } catch (err) {
-            console.log(err);
-            throw err;
-        }
- 
+    try {
+      await this.sessionRepository.remove(session);
+    } catch (err) {
+      console.log(err);
+      throw err;
     }
+  }
 
+  private async hashPassword(password: string) {
+    try {
+      const salt = await bcrypt.genSalt();
+      const hashedPassword = await bcrypt.hash(password, salt);
+      return hashedPassword;
+    } catch (error) {
+      throw new Error('There is a problem to hash the password');
+    }
+  }
 
-      
+  private async hashToken(token: string) {
+    try {
+      const salt = await bcrypt.genSalt();
+      return bcrypt.hash(token, salt);
+    } catch (err) {
+      throw new Error('There is a problem to hashToken');
+    }
+  }
+
+  private async findUser(email: string, phone: string, cf: string) {
+    return this.userRepository
+      .createQueryBuilder('user')
+      .where('user.email = :email OR user.phone = :phone OR user.cf = :cf', {
+        email,
+        phone,
+        cf,
+      })
+      .getOne();
+  }
+
+  private async createUserDoctor(
+    info: DoctorRegisterDto,
+    hashedPassword: string,
+  ): Promise<User> {
+    const user = this.userRepository.create({
+      email: info.email,
+      password: hashedPassword,
+      name: info.name,
+      surname: info.surname,
+      cf: info.cf,
+      birthDate: info.birthDate,
+      phone: info.phone,
+      gender: info.gender,
+      address: info.address,
+      city: info.city,
+      cap: info.cap,
+      province: info.province,
+      role: UserRoles.DOCTOR,
+    });
+
+    return this.userRepository.save(user);
+  }
+
+  private async createDoctorInfo(
+    info: DoctorRegisterDto,
+    user: User,
+  ): Promise<Doctor> {
+    const doctor = this.doctorRepository.create({
+      medicalOffice: info.medicalOffice,
+      registrationNumber: info.registrationNumber,
+      orderProvince: info.orderProvince,
+      orderDate: info.orderDate,
+      orderType: info.orderType,
+      specialization: info.specialization,
+      user: user,
+    });
+
+    return this.doctorRepository.save(doctor);
+  }
+
+  private async createSession(
+    user: User,
+    deviceInfo: DeviceInfo,
+  ): Promise<Session> {
+    const session = this.sessionRepository.create({
+      user: user,
+      createdAt: new Date(),
+      expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+      deviceInfo: deviceInfo.userAgent,
+      ipAddress: deviceInfo.ipAddress,
+    });
+
+    return this.sessionRepository.save(session);
+  }
+
+  private async generateTokens(payload: JwtPayload): Promise<TokensDto> {
+    const accessToken: string = await this.jwtService.sign(payload, {
+      expiresIn: '15m',
+    });
+    const refreshToken: string = await this.jwtService.sign(payload, {
+      expiresIn: '7d',
+    });
+
+    return { accessToken, refreshToken };
+  }
+
+  private verifyToken(refreshToken: string): JwtPayload {
+    try {
+      return this.jwtService.verify(refreshToken);
+    } catch (err) {
+      throw new UnauthorizedException('Invalid or expired token');
+    }
+  }
+
+  private async isRefreshTokenValid(
+    token: string,
+    hashedToken: string,
+  ): Promise<boolean> {
+    return bcrypt.compare(token, hashedToken);
+  }
 }

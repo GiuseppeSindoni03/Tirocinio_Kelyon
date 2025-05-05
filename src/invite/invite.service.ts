@@ -3,6 +3,7 @@ import {
   ConflictException,
   Injectable,
   NotFoundException,
+  UnauthorizedException,
 } from '@nestjs/common';
 import { Repository } from 'typeorm';
 import { Invite } from './invite.entity';
@@ -14,6 +15,8 @@ import { AcceptInviteDto } from './dto/accept-invite.dto';
 import { Patient } from 'src/patient/patient.entity';
 import * as bcrypt from 'bcryptjs';
 import { addDays } from 'date-fns';
+import { UserRoles } from 'src/common/enum/roles.enum';
+import { UserItem } from 'src/common/types/userItem';
 
 @Injectable()
 export class InviteService {
@@ -33,17 +36,50 @@ export class InviteService {
 
   async createInvite(
     createInviteDto: CreateInviteDto,
-    user: string,
+    userId: string,
   ): Promise<Invite> {
+    const doctor = await this.findDoctorOrThrow(userId);
+
+    await this.createPatient(createInviteDto, doctor);
+
+    return await this.createAndSaveInvite(createInviteDto, doctor);
+  }
+
+  async acceptInvite(
+    data: AcceptInviteDto,
+    inviteId: string,
+    user: UserItem,
+  ): Promise<{ message: string }> {
+    const invite = await this.findValidInviteOrThrow(inviteId);
+
+    const hashedPassword = await this.hashPassword(data.password);
+    const patientUser = await this.createUserPatient(data, hashedPassword);
+
+    await this.assignPatientToUser(invite.doctor.userId, user.id, patientUser);
+
+    await this.markInviteAsUsed(inviteId);
+
+    return {
+      message: 'Invite accept successfully',
+    };
+  }
+
+  // -- PRIVATE HELPERS
+
+  private async findDoctorOrThrow(userId: string) {
     const doctor = await this.doctorRepository.findOne({
-      where: { user: { id: user } },
+      where: { user: { id: userId } },
       relations: ['user'],
     });
 
-    if (!doctor) {
-      throw new NotFoundException('Doctor not found');
-    }
+    if (!doctor) throw new UnauthorizedException('Doctor not found');
+    return doctor;
+  }
 
+  private async createPatient(
+    createInviteDto: CreateInviteDto,
+    doctor: Doctor,
+  ) {
     const patient = this.patientRepository.create({
       weight: createInviteDto.weight,
       height: createInviteDto.height,
@@ -56,99 +92,93 @@ export class InviteService {
       doctor: doctor,
     });
 
-    try {
-      await this.patientRepository.save(patient);
-    } catch (err) {
-      console.log(err);
-      throw new BadRequestException('Error creating patient');
-    }
-
-    const invite = this.inviteRepository.create(createInviteDto);
-    invite.doctor = doctor;
-    invite.expiresAt = addDays(new Date(), 7);
-
-    try {
-      return await this.inviteRepository.save(invite);
-    } catch (error) {
-      console.error('Error during saving invite', error);
-      throw new BadRequestException('Error during saving invite');
-    }
+    return await this.patientRepository.save(patient);
   }
 
-  async acceptInvite(data: AcceptInviteDto, inviteId: string): Promise<void> {
-    const foundInvite = await this.inviteRepository.findOne({
+  private async createAndSaveInvite(
+    createInviteDto: CreateInviteDto,
+    doctor: Doctor,
+  ) {
+    const invite = this.inviteRepository.create({
+      ...createInviteDto,
+      doctor: doctor,
+      expiresAt: addDays(new Date(), 7),
+    });
+
+    return await this.inviteRepository.save(invite);
+  }
+
+  private async findValidInviteOrThrow(inviteId: string) {
+    const invite = await this.inviteRepository.findOne({
       where: { id: inviteId },
       relations: ['doctor'],
     });
 
-    if (!foundInvite) {
+    if (!invite) {
       throw new NotFoundException('Invite not found');
     }
-    if (foundInvite.used) {
+    if (invite.used) {
       throw new BadRequestException('Invite already used');
     }
 
-    if (foundInvite.expiresAt < new Date()) {
+    if (invite.expiresAt < new Date()) {
       throw new BadRequestException('Invite expired');
     }
 
-    const salt = await bcrypt.genSalt();
-    const hashedPassword = await bcrypt.hash(data.password, salt);
+    return invite;
+  }
 
-    //3. Salvo l'utente prima di collegarlo al paziente
+  private async hashPassword(password: string) {
+    try {
+      const salt = await bcrypt.genSalt();
+      const hashedPassword = await bcrypt.hash(password, salt);
+      return hashedPassword;
+    } catch (error) {
+      throw new Error('There is a problem to hash the password');
+    }
+  }
+
+  private async createUserPatient(
+    info: AcceptInviteDto,
+    hashedPassword: string,
+  ): Promise<User> {
     const user = this.userRepository.create({
-      name: data.name,
-      surname: data.surname,
-      email: data.email,
+      email: info.email,
       password: hashedPassword,
-      cf: data.cf,
-      birthDate: data.birthDate,
-      gender: data.gender,
-      phone: data.phone,
-      address: data.address,
-      city: data.city,
-      cap: data.cap,
-      province: data.province,
-      role: 'PATIENT',
+      name: info.name,
+      surname: info.surname,
+      cf: info.cf,
+      birthDate: info.birthDate,
+      phone: info.phone,
+      gender: info.gender,
+      address: info.address,
+      city: info.city,
+      cap: info.cap,
+      province: info.province,
+      role: UserRoles.PATIENT,
     });
 
-    try {
-      await this.userRepository.save(user);
-    } catch (error) {
-      if (error.code === '23505') {
-        if (error.detail.includes('email')) {
-          throw new ConflictException('Email already registered.');
-        }
-        if (error.detail.includes('cf')) {
-          throw new ConflictException('CF already registered.');
-        }
-        if (error.detail.includes('phone')) {
-          throw new ConflictException('Phone already registered.');
-        }
-      }
-      console.error(error);
-      throw new BadRequestException('Error creating user');
-    }
+    return this.userRepository.save(user);
+  }
 
-    console.log(foundInvite);
-
+  private async assignPatientToUser(
+    doctorId: string,
+    userId: string,
+    newPatientUser: User,
+  ) {
     const patient = await this.patientRepository.findOne({
-      where: { doctor: foundInvite.doctor },
+      where: { doctor: { userId: doctorId }, user: { id: userId } },
     });
 
     if (!patient) {
       throw new NotFoundException('Patient not found');
     }
-    // 4. Associo al paziente il proprio profilo utente
-    try {
-      patient.user = user;
-      await this.patientRepository.save(patient);
-    } catch (err) {
-      console.log(err);
-      throw new NotFoundException('Patient not found');
-    }
 
-    // 5. Marca l'invito come usato
-    await this.inviteRepository.update({ id: foundInvite.id }, { used: true });
+    patient.user = newPatientUser;
+    await this.patientRepository.save(patient);
+  }
+
+  private async markInviteAsUsed(inviteId: string): Promise<void> {
+    await this.inviteRepository.update({ id: inviteId }, { used: true });
   }
 }

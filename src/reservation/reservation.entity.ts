@@ -2,6 +2,7 @@ import { Column, Entity, ManyToOne, PrimaryGeneratedColumn } from 'typeorm';
 import { ReservationStatus } from './types/reservation-status-enum';
 import { Patient } from 'src/patient/patient.entity';
 import { Doctor } from 'src/doctor/doctor.entity';
+import { VisitType } from './visit-type.entity';
 
 @Entity()
 export class Reservation {
@@ -23,6 +24,11 @@ export class Reservation {
   @ManyToOne(() => Patient, (patient) => patient.reservations)
   patient: Patient;
 
-  @ManyToOne(() => Doctor, (doctor) => doctor.reservations)
+  @ManyToOne(() => Doctor, (doctor) => doctor.reservations, {
+    onDelete: 'CASCADE',
+  })
   doctor: Doctor;
+
+  @ManyToOne(() => VisitType, { eager: true })
+  visitType: VisitType;
 }

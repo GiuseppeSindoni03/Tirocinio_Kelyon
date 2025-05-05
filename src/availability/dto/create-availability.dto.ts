@@ -1,6 +1,6 @@
 import { IsISO8601, IsNotEmpty } from 'class-validator';
-import { HasMinimumDuration } from 'src/validators/has-minimum-duration';
-import { IsSameDay } from 'src/validators/IsSameDayAndValidRange';
+import { HasMinimumDuration } from 'src/common/validators/has-minimum-duration';
+import { IsSameDay } from 'src/common/validators/IsSameDayAndValidRange';
 
 export class CreateAvailabilityDto {
   @IsNotEmpty()

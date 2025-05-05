@@ -1,82 +1,88 @@
-import { Gender } from "src/auth/dto/gender-enum";
-import { Doctor } from "src/doctor/doctor.entity";
-import { Column, Entity, JoinColumn, ManyToOne, PrimaryGeneratedColumn } from "typeorm";
+import { Gender } from 'src/auth/dto/gender-enum';
+import { Doctor } from 'src/doctor/doctor.entity';
+import {
+  Column,
+  Entity,
+  JoinColumn,
+  ManyToOne,
+  PrimaryGeneratedColumn,
+} from 'typeorm';
 
 @Entity()
 export class Invite {
-    @PrimaryGeneratedColumn('uuid')
-    id: string;
-    
-    @Column()
-    name: string;
+  @PrimaryGeneratedColumn('uuid')
+  id: string;
 
-    @Column()
-    surname: string;
+  @Column()
+  name: string;
 
-    @Column()
-    email: string;
+  @Column()
+  surname: string;
 
-    @Column()
-    cf: string;
+  @Column()
+  email: string;
 
-    @Column( { type: 'date' } )
-    birthDate: Date;
+  @Column()
+  cf: string;
 
-    @Column({ type: 'enum', enum: Gender })
-    gender: Gender;
+  @Column({ type: 'date' })
+  birthDate: Date;
 
-    @Column()
-    phone: string;
+  @Column({ type: 'enum', enum: Gender })
+  gender: Gender;
 
-    @Column()
-    address: string;
+  @Column()
+  phone: string;
 
-    @Column()
-    city: string;
+  @Column()
+  address: string;
 
-    @Column()
-    cap: string;
+  @Column()
+  city: string;
 
-    @Column()
-    province: string;
+  @Column()
+  cap: string;
 
+  @Column()
+  province: string;
 
-    @Column({ type: 'float'})
-    weight: number;
+  @Column({ type: 'float' })
+  weight: number;
 
-    @Column({ type: 'float'})
-    height: number;
+  @Column({ type: 'float' })
+  height: number;
 
-    @Column()
-    bloodType: string;
+  @Column()
+  bloodType: string;
 
-    @Column()
-    level: string;
+  @Column()
+  level: string;
 
-    @Column()
-    sport: string;
+  @Column()
+  sport: string;
 
-    @Column("text", {array: true})
-    patologies: string[];
+  @Column('text', { array: true })
+  patologies: string[];
 
-    @Column("text", {array: true})
-    medications: string[];
+  @Column('text', { array: true })
+  medications: string[];
 
-    @Column("text", {array: true})
-    injuries: string[];
+  @Column('text', { array: true })
+  injuries: string[];
 
+  @Column({ default: false })
+  used: boolean;
 
-    @Column({ default: false })
-    used: boolean;
+  @Column({ type: 'timestamp', default: () => 'CURRENT_TIMESTAMP' })
+  createdAt: Date;
 
-    @Column({ type: 'timestamp', default: () => 'CURRENT_TIMESTAMP' })
-    createdAt: Date;
+  @Column({ type: 'timestamp', nullable: true })
+  expiresAt: Date;
 
-    @Column({ type: 'timestamp', nullable: true })
-    expiresAt: Date;
-
-    @ManyToOne(type => Doctor, (doctor) => doctor.id, {cascade: true, onDelete: 'CASCADE'})
-    @JoinColumn()
-    doctor: Doctor;
-
+  @ManyToOne((type) => Doctor, (doctor) => doctor.userId, {
+    cascade: true,
+    onDelete: 'CASCADE',
+  })
+  @JoinColumn()
+  doctor: Doctor;
 }

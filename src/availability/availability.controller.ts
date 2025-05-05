@@ -5,7 +5,9 @@ import {
   HttpException,
   HttpStatus,
   Post,
+  Query,
   Req,
+  UnauthorizedException,
 } from '@nestjs/common';
 import { AvailabilityService } from './availability.service';
 import { CreateAvailabilityDto } from './dto/create-availability.dto';
@@ -13,58 +15,57 @@ import { AuthGuard } from '@nestjs/passport';
 import { UseGuards } from '@nestjs/common';
 import { RolesGuard } from 'src/auth/guards/roles.guard';
 import { Roles } from 'src/auth/decorators/role.decorator';
-import { RequestWithUser } from 'src/types/request-with-user.interface';
+import { UserItem } from 'src/common/types/userItem';
+import { GetUser } from 'src/auth/get-user-decorator';
+import { UserRoles } from 'src/common/enum/roles.enum';
 
 @Controller('doctor/availability')
-@UseGuards(RolesGuard)
-@UseGuards(AuthGuard('jwt'))
+@UseGuards(AuthGuard('jwt'), RolesGuard)
 export class AvailabilityController {
   constructor(private readonly availabilityService: AvailabilityService) {}
 
   @Post()
-  @Roles('DOCTOR', 'ADMIN')
+  @Roles(UserRoles.DOCTOR, UserRoles.ADMIN)
   async createAvailability(
     @Body() body: CreateAvailabilityDto,
-    @Req() req: RequestWithUser,
+    @GetUser() user: UserItem,
   ) {
-    const user = req.user;
-
-    if (!user.doctor) {
-      throw new HttpException('You are not a doctor', HttpStatus.FORBIDDEN);
-    }
-
-    return this.availabilityService.createAvailability(body, user.doctor.id);
+    const doctor = this.getDoctorOrThrow(user);
+    return this.availabilityService.createAvailability(body, doctor.userId);
   }
 
+  // mi immagino serva tipo quando compare l'intero calendario
   @Get()
-  @Roles('DOCTOR', 'ADMIN')
-  async getAvailabilities(@Req() req: RequestWithUser) {
-    const id = req.user.id;
-    const user = req.user;
-
-    if (!user.doctor) {
-      throw new HttpException('You are not a doctor', HttpStatus.FORBIDDEN);
-    }
-
-    return this.availabilityService.getAvailabilities(user.doctor);
+  @Roles(UserRoles.DOCTOR, UserRoles.ADMIN)
+  async getAvailabilities(@GetUser() user: UserItem) {
+    const doctor = this.getDoctorOrThrow(user);
+    return this.availabilityService.getAvailabilities(doctor);
   }
 
+  //qui invece immagino serva quando hai focus su un giorno specifico del calendario
   @Get('/date')
-  @Roles('DOCTOR', 'ADMIN')
-  async getAvailabilitiesByDate(
-    @Body() body: { date: string },
-    @Req() req: RequestWithUser,
+  @Roles(UserRoles.DOCTOR, UserRoles.ADMIN)
+  async getAvailabilitiesDate(
+    @GetUser() user: UserItem,
+    @Query('date') date?: string,
   ) {
-    const id = req.user.id;
-    const user = req.user;
+    const doctor = this.getDoctorOrThrow(user);
 
-    if (!user.doctor) {
-      throw new HttpException('You are not a doctor', HttpStatus.FORBIDDEN);
+    if (date) {
+      return this.availabilityService.getAvailabiltiesByDate(doctor, date);
     }
 
-    return this.availabilityService.getAvailabiltiesByDate(
-      user.doctor,
-      body.date,
-    );
+    return this.availabilityService.getAvailabilities(doctor);
+  }
+
+  // PRIVATE
+
+  private getDoctorOrThrow(user: UserItem) {
+    if (!user.doctor) {
+      throw new UnauthorizedException(
+        'You must be a doctor to perform this action',
+      );
+    }
+    return user.doctor;
   }
 }

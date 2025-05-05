@@ -1,12 +1,13 @@
 import {
+  BadRequestException,
   Body,
   Controller,
   Get,
-  HttpException,
-  HttpStatus,
+  Param,
+  ParseUUIDPipe,
   Patch,
   Post,
-  Req,
+  Query,
   UnauthorizedException,
   UseGuards,
 } from '@nestjs/common';
@@ -14,9 +15,13 @@ import { ReservationService } from './reservation.service';
 import { AuthGuard } from '@nestjs/passport';
 import { RolesGuard } from 'src/auth/guards/roles.guard';
 import { Roles } from 'src/auth/decorators/role.decorator';
-import { RequestWithUser } from 'src/types/request-with-user.interface';
 import { CreateReservationDto } from './dto/create-reservation.dto';
 import { GetSlot } from './dto/get-slot.dto';
+import { GetUser } from 'src/auth/get-user-decorator';
+import { UserItem } from 'src/common/types/userItem';
+import { UserRoles } from 'src/common/enum/roles.enum';
+import { VisitType } from './visit-type.entity';
+import { VisitTypeEnum } from './types/visit-type.enum';
 
 @Controller('reservations')
 @UseGuards(RolesGuard)
@@ -25,70 +30,84 @@ export class ReservationController {
   constructor(private readonly reservationService: ReservationService) {}
 
   @Get()
-  @Roles('DOCTOR', 'ADMIN')
-  async getReservations(@Req() req: RequestWithUser) {
-    const user = req.user;
-
+  @Roles(UserRoles.DOCTOR, UserRoles.ADMIN)
+  async getReservations(@GetUser() user: UserItem) {
     if (!user.doctor) {
-      throw new HttpException('You are not a doctor', HttpStatus.FORBIDDEN);
+      throw new UnauthorizedException('You are not a doctor');
     }
 
     return this.reservationService.getReservations(user.doctor);
   }
 
   @Post()
-  @Roles('PATIENT', 'ADMIN')
+  @Roles(UserRoles.PATIENT, UserRoles.ADMIN)
   async createReservation(
-    @Req() req: RequestWithUser,
+    @GetUser() user: UserItem,
     @Body() body: CreateReservationDto,
   ) {
-    const patient = req.user.patient;
-    if (!patient) {
-      throw new UnauthorizedException(
-        'Solo i pazienti possono fare una richiesta di prenotazione.',
-      );
+    if (!user.patient) {
+      throw new UnauthorizedException('You are not a patient.');
     }
 
-    const doctor = patient.doctor;
-
-    if (!doctor) {
-      throw new HttpException('Dottore del paziente non esiste', 400);
+    if (!user.patient.doctor) {
+      throw new BadRequestException('Patient`s doctor doesn`t exist');
     }
 
-    return this.reservationService.createReservation(doctor, patient, body);
+    return this.reservationService.createReservation(
+      user.patient.doctor,
+      user.patient,
+      body,
+    );
   }
 
   @Patch('/:reservationId/confirm')
-  @Roles('DOCTOR', 'ADMIN')
-  async acceptReservation(@Req() req: RequestWithUser) {
-    const { reservationId } = req.params;
+  @Roles(UserRoles.DOCTOR, UserRoles.ADMIN)
+  async acceptReservation(
+    @GetUser() user: UserItem,
+    @Param('reservationId', new ParseUUIDPipe()) reservationId: string,
+  ) {
+    const doctor = user.doctor;
+    if (!doctor) throw new UnauthorizedException('You are not a doctor');
 
-    const doctor = req.user.doctor;
+    await this.reservationService.acceptReservation(reservationId, doctor);
 
-    if (!doctor) return new HttpException('Purtroppo non sei un dottore', 401);
-
-    return this.reservationService.acceptReservation(reservationId, doctor);
+    return {
+      message: 'Reservation confirmed successfully',
+    };
   }
 
-  @Patch('/:reservationId/reject')
-  @Roles('DOCTOR', 'ADMIN')
-  async rejectReservation(@Req() req: RequestWithUser) {
-    const { reservationId } = req.params;
+  @Patch('/:reservationId/decline')
+  @Roles(UserRoles.DOCTOR, UserRoles.ADMIN)
+  async rejectReservation(
+    @GetUser() user: UserItem,
+    @Param('reservationId', new ParseUUIDPipe()) reservationId: string,
+  ) {
+    const doctor = user.doctor;
 
-    const doctor = req.user.doctor;
+    if (!doctor) throw new UnauthorizedException('You are not a doctor');
 
-    if (!doctor) return new HttpException('Purtroppo non sei un dottore', 401);
+    await this.reservationService.declineReservation(reservationId, doctor);
 
-    return this.reservationService.declineReservation(reservationId, doctor);
+    return {
+      message: 'Reservation declined successfully',
+    };
   }
 
-  @Get(':doctorId/slots')
-  @Roles('PATIENT', 'ADMIN')
-  async getSlots(@Req() req: RequestWithUser, @Body() body: GetSlot) {
-    const patient = req.user.patient;
+  @Get('/slots')
+  @Roles(UserRoles.PATIENT, UserRoles.ADMIN)
+  async getSlots(
+    @GetUser() user: UserItem,
+    @Query('date') date: string,
+    @Query('visitType') visitType: VisitTypeEnum,
+  ) {
+    const patient = user.patient;
 
-    if (!patient) throw new HttpException('Purtroppo non sei un paziente', 400);
+    if (!patient) throw new UnauthorizedException('You are not a patient');
 
-    return this.reservationService.getReservationSlots(patient, body);
+    return this.reservationService.getReservationSlots(
+      patient.doctor,
+      date,
+      visitType,
+    );
   }
 }

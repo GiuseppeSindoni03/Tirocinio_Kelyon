@@ -5,17 +5,19 @@ import {
   ManyToOne,
   OneToMany,
   OneToOne,
-  PrimaryGeneratedColumn,
+  PrimaryColumn,
 } from 'typeorm';
 import { User } from 'src/user/user.entity';
 import { MedicalExamination } from 'src/medical-examination/medical-examination.entity';
 import { Doctor } from 'src/doctor/doctor.entity';
 import { Reservation } from 'src/reservation/reservation.entity';
+import { PatientLevel } from './types/patient-level.enum';
+import { Exclude } from 'class-transformer';
 
 @Entity()
 export class Patient {
-  @PrimaryGeneratedColumn('uuid')
-  id: string;
+  @PrimaryColumn('uuid')
+  userId: string;
 
   @Column({ type: 'float' })
   weight: number;
@@ -26,8 +28,12 @@ export class Patient {
   @Column()
   bloodType: string;
 
-  @Column()
-  level: string;
+  @Column({
+    type: 'enum',
+    enum: PatientLevel,
+    default: PatientLevel.BEGINNER,
+  })
+  level: PatientLevel;
 
   @Column()
   sport: string;
@@ -51,13 +57,14 @@ export class Patient {
   )
   medicalExaminations: MedicalExamination[];
 
-  @ManyToOne(() => Doctor, (doctor) => doctor.id, { onDelete: 'CASCADE' })
+  @ManyToOne(() => Doctor, (doctor) => doctor.userId, { onDelete: 'CASCADE' })
   doctor: Doctor;
 
   @OneToOne(() => User, (user) => user.id, {
     nullable: true,
     onDelete: 'CASCADE',
   })
-  @JoinColumn()
+  @JoinColumn({ name: 'userId' })
+  @Exclude()
   user: User;
 }

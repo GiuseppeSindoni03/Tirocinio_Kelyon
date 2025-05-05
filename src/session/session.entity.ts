@@ -1,23 +1,23 @@
-import { User } from "src/user/user.entity";
-import { Column, Entity, ManyToOne, PrimaryGeneratedColumn } from "typeorm";
+import { User } from 'src/user/user.entity';
+import { Column, Entity, ManyToOne, PrimaryGeneratedColumn } from 'typeorm';
 
 @Entity()
 export class Session {
   @PrimaryGeneratedColumn('uuid')
-  id: number;
+  id: string;
 
   @ManyToOne(() => User, { onDelete: 'CASCADE' })
   user: User;
 
-  @Column({nullable: true, type: 'text'})
+  @Column({ nullable: true, type: 'text' })
   refreshToken: string;
 
   @Column()
-  deviceInfo: string; 
+  deviceInfo: string;
 
   @Column()
   ipAddress: string;
-  
+
   @Column({ type: 'timestamp' })
   createdAt: Date;
 

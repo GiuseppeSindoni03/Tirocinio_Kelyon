@@ -1,5 +1,4 @@
-
 export interface JwtPayload {
-    userId: string;
-    sessionId: number;
+  userId: string;
+  sessionId: string;
 }

@@ -1,8 +1,8 @@
 import {
+  BadRequestException,
   ConflictException,
-  HttpCode,
-  HttpException,
   Injectable,
+  NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Reservation } from './reservation.entity';
@@ -13,6 +13,11 @@ import { CreateReservationDto } from './dto/create-reservation.dto';
 import { Patient } from 'src/patient/patient.entity';
 import { Availability } from 'src/availability/availability.entity';
 import { GetSlot } from './dto/get-slot.dto';
+import { endOfDay, startOfDay } from 'date-fns';
+import { TimeSlot } from './types/time-slot.interface';
+import { OccupiedSlot } from './types/occupied-slot.interface';
+import { VisitType } from './visit-type.entity';
+import { VisitTypeEnum } from './types/visit-type.enum';
 
 @Injectable()
 export class ReservationService {
@@ -22,62 +27,55 @@ export class ReservationService {
 
     @InjectRepository(Availability)
     private readonly availabilityRepository: Repository<Availability>,
+
+    @InjectRepository(VisitType)
+    private readonly visitTypeRepository: Repository<VisitType>,
   ) {}
 
   async getReservations(
     doctor: Doctor,
   ): Promise<{ date: string; reservations: Reservation[] }[]> {
-    const reservations: Reservation[] = await this.reservationRepository
+    const reservations = await this.reservationRepository
       .createQueryBuilder('r')
       .where({ doctor })
       .orderBy('r.startDate', 'ASC')
       .getMany();
 
-    const groupedReservations = new Map<string, Reservation[]>();
+    const grouped: Record<string, Reservation[]> = {};
 
     reservations.forEach((reservation) => {
-      const date = reservation.startDate.toISOString().split('T')[0];
+      const dateKey = reservation.startDate.toISOString().split('T')[0];
 
-      if (!groupedReservations.has(date)) {
-        groupedReservations.set(date, []);
+      if (!grouped[dateKey]) {
+        grouped[dateKey] = [];
       }
 
-      groupedReservations.get(date)!.push(reservation);
+      grouped[dateKey].push(reservation);
     });
 
-    const result: { date: string; reservations: Reservation[] }[] = [];
-
-    for (const [date, reservations] of groupedReservations.entries()) {
-      result.push({ date, reservations });
-    }
-
-    // Ordina anche i gruppi per data, se vuoi
-    result.sort((a, b) => a.date.localeCompare(b.date));
-
-    return result;
+    return Object.entries(grouped).map(([date, reservations]) => ({
+      date,
+      reservations,
+    }));
   }
 
+  // RETURN ALL THE RESERVATIONS OF A SPECIFIC DATE
   async getReservationsByDay(
     doctorId: string,
-    date: string,
+    date: Date,
   ): Promise<Reservation[]> {
-    const reservations = await this.reservationRepository
+    const startDate = startOfDay(date);
+    const endDate = endOfDay(date);
+
+    return this.reservationRepository
       .createQueryBuilder('r')
       .where('r.doctorId = :doctorId', { doctorId })
+      .andWhere('r.startDate BETWEEN :startDate AND :endDate', {
+        startDate,
+        endDate,
+      })
       .orderBy('r.startDate', 'ASC')
       .getMany();
-
-    const result: Reservation[] = [];
-
-    reservations.forEach((reservation) => {
-      const day = reservation.startDate.toISOString().split('T')[0];
-
-      if (day === date) {
-        result.push(reservation);
-      }
-    });
-
-    return result;
   }
 
   async createReservation(
@@ -85,34 +83,19 @@ export class ReservationService {
     patient: Patient,
     createReservationDto: CreateReservationDto,
   ) {
-    const { startTime, endTime } = createReservationDto;
+    const { startTime, endTime, visitType } = createReservationDto;
 
-    const found = await this.reservationRepository.findOne({
-      where: {
-        doctor,
-        startDate: startTime,
-        status: ReservationStatus.CONFIRMED,
-      },
-    });
+    await this.ensureSlotNotBooked(doctor, startTime);
 
-    if (found) {
-      throw new ConflictException('Reservation already exists');
-    }
+    await this.findValidAvailabilityOrThrow(doctor, startTime, endTime);
 
-    const validAvailability = await this.availabilityRepository
-      .createQueryBuilder('a')
-      .where('a.doctorId = :doctorId', { doctorId: doctor.id })
-      .andWhere('a.startTime <= :startTime')
-      .andWhere('a.endTime >= :endTime')
-      .setParameters({ startTime, endTime })
-      .getOne();
+    const visitTypeEntity = await this.findVisitTypeOrThrow(visitType);
 
-    if (!validAvailability) {
-      throw new HttpException(
-        'The reservation must be within an available time slot for the doctor.',
-        400,
-      );
-    }
+    await this.checkVisitDuration(
+      visitTypeEntity.durationMinutes,
+      startTime,
+      endTime,
+    );
 
     const reservation = this.reservationRepository.create({
       startDate: startTime,
@@ -121,22 +104,20 @@ export class ReservationService {
       patient,
       status: ReservationStatus.PENDING,
       createdAt: new Date(),
+      visitType: visitTypeEntity,
     });
 
     return this.reservationRepository.save(reservation);
   }
 
   async acceptReservation(reservationId: string, doctor: Doctor) {
-    const reservation = await this.reservationRepository
-      .createQueryBuilder('r')
-      .where('r.id = :reservationId', { reservationId })
-      .andWhere('r.doctorId = :doctorId', { doctorId: doctor.id })
-      .andWhere('r.status = :reservationStatus', {
-        reservationStatus: ReservationStatus.PENDING,
-      })
-      .getOne();
+    const reservation = await this.getPendingReservationById(
+      doctor,
+      reservationId,
+    );
 
-    if (!reservation) throw new HttpException("Reservation doesn't exist", 400);
+    if (!reservation)
+      throw new BadRequestException("Reservation doesn't exist");
 
     reservation.status = ReservationStatus.CONFIRMED;
 
@@ -144,16 +125,13 @@ export class ReservationService {
   }
 
   async declineReservation(reservationId: string, doctor: Doctor) {
-    const reservation = await this.reservationRepository
-      .createQueryBuilder('r')
-      .where('r.id = :reservationId', { reservationId })
-      .andWhere('r.doctorId = :doctorId', { doctorId: doctor.id })
-      .andWhere('r.status = :reservationStatus', {
-        reservationStatus: ReservationStatus.PENDING,
-      })
-      .getOne();
+    const reservation = await this.getPendingReservationById(
+      doctor,
+      reservationId,
+    );
 
-    if (!reservation) throw new HttpException("Reservation doesn't exist", 400);
+    if (!reservation)
+      throw new BadRequestException("Reservation doesn't exist");
 
     reservation.status = ReservationStatus.DECLINED;
 
@@ -161,67 +139,178 @@ export class ReservationService {
   }
 
   async getReservationSlots(
-    patient: Patient,
-    dateDto: GetSlot,
-  ): Promise<{ startTime: Date; endTime: Date }[]> {
-    const date = dateDto.date.toString().split('T')[0]; // Es: "2025-04-02"
+    doctor: Doctor,
+    dateDto: string,
+    visitType: VisitTypeEnum,
+  ): Promise<TimeSlot[]> {
+    const date = this.parseDateOrThrow(dateDto);
 
-    // 1. Prendi le disponibilità del dottore in quel giorno
-    const availabilities = await this.availabilityRepository
-      .createQueryBuilder('a')
-      .where('a.doctorId = :doctorId', { doctorId: patient.doctor.id })
-      .andWhere('DATE(a.startTime) = :date', { date })
-      .getMany();
+    const [availabilities, confirmedReservations, visitTypeEntity] =
+      await Promise.all([
+        this.getAvailabilitiesOrThrow(doctor.userId, date),
+        this.findConfirmedReservations(doctor.userId, date),
+        this.findVisitTypeOrThrow(visitType),
+      ]);
 
-    if (availabilities.length === 0) {
-      throw new HttpException(
-        'Nessuna disponibilità trovata per questa data',
-        404,
-      );
-    }
-
-    // 2. Riutilizza il tuo metodo già pronto!
-    const reservations = await this.getReservationsByDay(
-      patient.doctor.id,
-      date,
-    );
-
-    // 3. Filtra solo quelle confermate
-    const confirmed = reservations.filter(
-      (r) => r.status === ReservationStatus.CONFIRMED,
-    );
-
-    const occupiedSlots = confirmed.map((r) => ({
-      start: r.startDate.getTime(),
-      end: r.endDate.getTime(),
+    const occupiedSlots: OccupiedSlot[] = confirmedReservations.map((r) => ({
+      startTime: r.startDate.getTime(),
+      endTime: r.endDate.getTime(),
     }));
 
-    const availableSlots: { startTime: Date; endTime: Date }[] = [];
+    const availableSlots: TimeSlot[] = [];
 
     for (const availability of availabilities) {
-      let slotStart = new Date(availability.startTime);
-      const slotEnd = new Date(availability.endTime);
+      const slots = this.generateSlotsWithinAvailability(
+        availability.startTime,
+        availability.endTime,
+        visitTypeEntity.durationMinutes,
+      );
 
-      while (slotStart.getTime() + 30 * 60000 <= slotEnd.getTime()) {
-        const slot = {
-          startTime: new Date(slotStart),
-          endTime: new Date(slotStart.getTime() + 30 * 60000),
-        };
-
-        const overlaps = occupiedSlots.some(
-          (res) =>
-            slot.startTime.getTime() < res.end &&
-            slot.endTime.getTime() > res.start,
-        );
-
-        if (!overlaps) {
+      for (const slot of slots) {
+        if (!this.isSlotOccupied(slot, occupiedSlots)) {
           availableSlots.push(slot);
         }
-
-        slotStart = new Date(slotStart.getTime() + 30 * 60000);
       }
     }
 
     return availableSlots;
+  }
+
+  // PRIVATE
+
+  private async ensureSlotNotBooked(doctor: Doctor, startTime: Date) {
+    const found = await this.reservationRepository.findOne({
+      where: {
+        doctor: doctor,
+        startDate: startTime,
+        status: ReservationStatus.CONFIRMED,
+      },
+    });
+
+    if (found) {
+      throw new ConflictException('This slot has been booked');
+    }
+  }
+
+  private async findValidAvailabilityOrThrow(
+    doctor: Doctor,
+    startTime: Date,
+    endTime: Date,
+  ) {
+    const validAvailability = await this.availabilityRepository
+      .createQueryBuilder('a')
+      .where('a.doctorId = :doctorId', { doctorId: doctor.userId })
+      .andWhere('a.startTime <= :startTime')
+      .andWhere('a.endTime >= :endTime')
+      .setParameters({ startTime, endTime })
+      .getOne();
+
+    if (!validAvailability) {
+      throw new BadRequestException(
+        'The reservation must be within an available time slot for the doctor.',
+      );
+    }
+  }
+
+  private async getPendingReservationById(
+    doctor: Doctor,
+    reservationId: string,
+  ) {
+    return await this.reservationRepository
+      .createQueryBuilder('r')
+      .where('r.id = :reservationId', { reservationId })
+      .andWhere('r.doctorId = :doctorId', { doctorId: doctor.userId })
+      .andWhere('r.status = :reservationStatus', {
+        reservationStatus: ReservationStatus.PENDING,
+      })
+      .getOne();
+  }
+
+  private async getAvailabilitiesOrThrow(doctorId: string, date: Date) {
+    const availabilities = await this.availabilityRepository
+      .createQueryBuilder('a')
+      .where('a.doctorId = :doctorId', { doctorId: doctorId })
+      .andWhere('DATE(a.startTime) = :date', { date })
+      .getMany();
+
+    if (availabilities.length === 0) {
+      throw new NotFoundException(`There aren t availability for ${date}`);
+    }
+
+    return availabilities;
+  }
+
+  private parseDateOrThrow(dateString: string): Date {
+    const date = new Date(dateString);
+    if (isNaN(date.getTime())) {
+      throw new BadRequestException('Invalid date format');
+    }
+    return date;
+  }
+
+  private generateSlotsWithinAvailability(
+    start: Date,
+    end: Date,
+    durationMinutes: number,
+  ): { startTime: Date; endTime: Date }[] {
+    const slots: TimeSlot[] = [];
+    let slotStart = new Date(start);
+
+    while (slotStart.getTime() + durationMinutes * 60000 <= end.getTime()) {
+      slots.push({
+        startTime: new Date(slotStart),
+        endTime: new Date(slotStart.getTime() + durationMinutes * 60000),
+      });
+      slotStart = new Date(slotStart.getTime() + durationMinutes * 60000);
+    }
+
+    return slots;
+  }
+
+  private isSlotOccupied(
+    slot: TimeSlot,
+    occupiedSlots: OccupiedSlot[],
+  ): boolean {
+    return occupiedSlots.some(
+      (res) =>
+        slot.startTime.getTime() < res.endTime &&
+        slot.endTime.getTime() > res.startTime,
+    );
+  }
+
+  private async findVisitTypeOrThrow(visitType: VisitTypeEnum) {
+    const visitTypeEntity = await this.visitTypeRepository.findOne({
+      where: {
+        name: visitType,
+      },
+    });
+
+    if (!visitTypeEntity)
+      throw new BadRequestException(
+        `The type of visit ${visitType} doesn't exist`,
+      );
+
+    return visitTypeEntity;
+  }
+
+  private async checkVisitDuration(
+    visitDuration: number,
+    startTime: Date,
+    endTime: Date,
+  ) {
+    const durationInMinutes =
+      (endTime.getTime() - startTime.getTime()) / (1000 * 60);
+    if (visitDuration !== durationInMinutes)
+      throw new BadRequestException(
+        `The duration of slot doesn't match the type of visit`,
+      );
+  }
+
+  private async findConfirmedReservations(doctorId: string, date: Date) {
+    const confirmedReservations = (
+      await this.getReservationsByDay(doctorId, date)
+    ).filter((r) => r.status === ReservationStatus.CONFIRMED);
+
+    return confirmedReservations;
   }
 }

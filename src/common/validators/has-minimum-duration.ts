@@ -4,13 +4,13 @@ import {
   ValidationArguments,
 } from 'class-validator';
 
-export function HasDuration(
+export function HasMinimumDuration(
   minMinutes: number,
   validationOptions?: ValidationOptions,
 ) {
   return function (object: any, propertyName: string) {
     registerDecorator({
-      name: 'hasDuration',
+      name: 'hasMinimumDuration',
       target: object.constructor,
       propertyName,
       options: validationOptions,
@@ -26,10 +26,10 @@ export function HasDuration(
 
           const durationMinutes =
             (end.getTime() - start.getTime()) / (1000 * 60);
-          return durationMinutes === minMinutes;
+          return durationMinutes >= minMinutes;
         },
         defaultMessage: () =>
-          `La durata deve essere esattamente di ${minMinutes} minuti.`,
+          `The minimum duration of avaibility must be ${minMinutes} minutes.`,
       },
     });
   };

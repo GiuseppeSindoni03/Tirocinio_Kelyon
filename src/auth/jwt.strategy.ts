@@ -6,7 +6,7 @@ import { JwtPayload } from './dto/jtw-payload.interface';
 import { ConfigService } from '@nestjs/config';
 import { Session } from 'src/session/session.entity';
 import { Repository } from 'typeorm';
-import { UserItem } from 'src/types/userItem';
+import { UserItem } from 'src/common/types/userItem';
 import { Doctor } from 'src/doctor/doctor.entity';
 import { Patient } from 'src/patient/patient.entity';
 

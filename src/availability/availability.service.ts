@@ -2,13 +2,16 @@ import {
   Injectable,
   NotFoundException,
   ConflictException,
+  BadRequestException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { LessThan, MoreThan, Repository } from 'typeorm';
+import { Repository } from 'typeorm';
 import { Availability } from './availability.entity';
 import { CreateAvailabilityDto } from './dto/create-availability.dto';
 import { Doctor } from 'src/doctor/doctor.entity';
-import { GroupedAvailabilities } from 'src/types/grouped-availabilities';
+import { GroupedAvailabilities } from 'src/availability/types/grouped-availabilities';
+import { endOfDay, format, isBefore, startOfDay } from 'date-fns';
+import { AvailabilitySlotDto } from './dto/availability-slot.dto';
 
 @Injectable()
 export class AvailabilityService {
@@ -24,30 +27,16 @@ export class AvailabilityService {
     createAvailability: CreateAvailabilityDto,
     doctorId: string,
   ): Promise<Availability> {
-    const doctor = await this.ensureDoctorExists(doctorId);
+    const doctor = await this.findDoctorOrThrow(doctorId);
 
-    const { startTime: newStart, endTime: newEnd } = createAvailability;
+    const { startTime, endTime } =
+      this.validateAndParseDates(createAvailability);
 
-    const overlappingSlot = await this.availabilityRepository
-      .createQueryBuilder('a')
-      .where('a.doctorId = :doctorId', { doctorId: doctor.id })
-      .andWhere('a.startTime < :end')
-      .andWhere('a.endTime > :start')
-      .setParameters({ start: newStart, end: newEnd })
-      .getOne();
-
-    console.log('start (req):', newStart);
-    console.log('end (req):', newEnd);
-    console.log('overlappingSlot:', overlappingSlot);
-
-    if (overlappingSlot) {
-      throw new ConflictException(
-        'Time slot overlaps with an existing reservation.',
-      );
-    }
+    await this.checkNoOverlappingSlots(doctor.userId, startTime, endTime);
 
     const availability = this.availabilityRepository.create({
-      ...createAvailability,
+      startTime,
+      endTime,
       doctor,
     });
 
@@ -55,51 +44,54 @@ export class AvailabilityService {
   }
 
   async getAvailabilities(doctor: Doctor): Promise<GroupedAvailabilities[]> {
-    const all = await this.availabilityRepository.find({
+    const allSlots = await this.availabilityRepository.find({
       where: { doctor },
       order: { startTime: 'ASC' },
     });
 
-    const result: GroupedAvailabilities[] = [];
+    const grouped = allSlots.reduce(
+      (acc, slot) => {
+        const dateKey = format(slot.startTime, 'yyyy-MM-dd'); // giorno come chiave
 
-    const groupByDay = new Map<string, Availability[]>();
+        if (!acc[dateKey]) {
+          acc[dateKey] = [];
+        }
 
-    for (const a of all) {
-      const date = a.startTime.toISOString().split('T')[0]; // es: "2025-04-02"
-      if (!groupByDay.has(date)) {
-        groupByDay.set(date, []);
-      }
-      const slots = groupByDay.get(date);
-      if (slots) {
-        slots.push(a);
-      }
-    }
+        acc[dateKey].push({
+          id: slot.id,
+          startTime: slot.startTime.toISOString(),
+          endTime: slot.endTime.toISOString(),
+        });
 
-    for (const [date, slots] of groupByDay.entries()) {
-      result.push({ date, slots });
-    }
+        return acc;
+      },
+      {} as Record<string, AvailabilitySlotDto[]>,
+    );
 
-    return result;
+    return Object.entries(grouped).map(([date, slots]) => ({
+      date,
+      slots,
+    }));
   }
 
   async getAvailabiltiesByDate(
     doctor: Doctor,
     date: string,
   ): Promise<Availability[]> {
-    const start = new Date(`${date}T00:00:00.000Z`);
-    const end = new Date(`${date}T23:59:59.999Z`);
+    const start = startOfDay(new Date(date));
+    const end = endOfDay(new Date(date));
 
     return this.availabilityRepository
       .createQueryBuilder('a')
-      .where('a.doctorId = :doctorId', { doctorId: doctor.id })
+      .where('a.doctorId = :doctorId', { doctorId: doctor.userId })
       .andWhere('a.startTime BETWEEN :start AND :end', { start, end })
       .orderBy('a.startTime', 'ASC')
       .getMany();
   }
 
-  private async ensureDoctorExists(doctorId: string): Promise<Doctor> {
+  private async findDoctorOrThrow(doctorId: string): Promise<Doctor> {
     const doctor = await this.doctorRepository.findOne({
-      where: { id: doctorId },
+      where: { userId: doctorId },
       relations: ['user'],
     });
 
@@ -108,5 +100,49 @@ export class AvailabilityService {
     }
 
     return doctor;
+  }
+
+  private async checkNoOverlappingSlots(
+    userId: string,
+    startTime: Date,
+    endTime: Date,
+  ) {
+    const overlappingSlot = await this.availabilityRepository
+      .createQueryBuilder('a')
+      .where('a.doctorId = :doctorId', { doctorId: userId })
+      .andWhere('a.startTime < :end')
+      .andWhere('a.endTime > :start')
+      .setParameters({
+        start: startTime.toISOString,
+        end: endTime.toISOString(),
+      })
+      .getOne();
+
+    if (overlappingSlot) {
+      throw new ConflictException(
+        'Time slot overlaps with an existing reservation.',
+      );
+    }
+  }
+
+  private validateAndParseDates(dto: CreateAvailabilityDto): {
+    startTime: Date;
+    endTime: Date;
+  } {
+    const start = new Date(dto.startTime);
+    const end = new Date(dto.endTime);
+
+    if (isNaN(start.getTime()) || isNaN(end.getTime())) {
+      throw new BadRequestException('Invalid start or end time');
+    }
+
+    if (!isBefore(start, end)) {
+      throw new BadRequestException('Start time must be before end time');
+    }
+
+    return {
+      startTime: start,
+      endTime: end,
+    };
   }
 }

@@ -6,15 +6,16 @@ import {
   JoinColumn,
   OneToMany,
   OneToOne,
-  PrimaryGeneratedColumn,
+  PrimaryColumn,
 } from 'typeorm';
 import { Availability } from 'src/availability/availability.entity';
 import { Reservation } from 'src/reservation/reservation.entity';
+import { Exclude } from 'class-transformer';
 
 @Entity()
 export class Doctor {
-  @PrimaryGeneratedColumn('uuid')
-  id: string;
+  @PrimaryColumn('uuid')
+  userId: string;
 
   @Column()
   specialization: string;
@@ -40,8 +41,12 @@ export class Doctor {
   )
   medicalExaminations: MedicalExamination[];
 
-  @OneToOne(() => User, (user) => user.id, { onDelete: 'CASCADE' })
-  @JoinColumn()
+  @OneToOne(() => User, (user) => user.id, {
+    nullable: true,
+    onDelete: 'CASCADE',
+  })
+  @JoinColumn({ name: 'userId' })
+  @Exclude()
   user: User;
 
   @OneToMany(() => Availability, (availability) => availability.doctor)
